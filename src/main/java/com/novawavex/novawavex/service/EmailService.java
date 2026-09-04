@@ -122,9 +122,42 @@ public class EmailService {
                     + "NovaWavex Security Team"
             );
 
+            System.out.println(
+                    ">>> EmailService: Connecting to SMTP server "
+                            + mailHost
+                            + ":"
+                            + mailPort
+            );
+
             Transport.send(message);
 
+            System.out.println(
+                    ">>> EmailService: Password reset email sent successfully"
+            );
+
         } catch (MessagingException exception) {
+
+            /*
+             * =========================================
+             * DIAGNOSTIC LOGGING
+             * =========================================
+             *
+             * Print the real SMTP exception so that
+             * Render logs show the actual reason for
+             * the email failure.
+             */
+
+            System.err.println(
+                    ">>> EmailService ERROR: "
+                            + exception.getClass().getName()
+            );
+
+            System.err.println(
+                    ">>> EmailService ERROR MESSAGE: "
+                            + exception.getMessage()
+            );
+
+            exception.printStackTrace();
 
             throw new IllegalStateException(
                     "Unable to send password reset email",
