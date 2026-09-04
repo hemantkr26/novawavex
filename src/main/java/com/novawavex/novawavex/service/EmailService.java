@@ -1,31 +1,31 @@
 
 package com.novawavex.novawavex.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.Session;
-import jakarta.mail.Transport;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.Properties;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 @Service
 public class EmailService {
 
-    @Value("${spring.mail.host}")
-    private String mailHost;
+    @Value("${RESEND_API_KEY}")
+    private String resendApiKey;
 
-    @Value("${spring.mail.port}")
-    private int mailPort;
+    /*
+     * =========================================
+     * RESEND EMAIL API
+     * =========================================
+     */
 
-    @Value("${spring.mail.username}")
-    private String mailUsername;
+    private static final String RESEND_API_URL =
+            "https://api.resend.com/emails";
 
-    @Value("${spring.mail.password}")
-    private String mailPassword;
+    private static final String FROM_EMAIL =
+            "NovaWavex <onboarding@resend.dev>";
 
     /*
      * =========================================
@@ -44,108 +44,108 @@ public class EmailService {
 
         try {
 
-            Properties properties =
-                    new Properties();
+            String htmlContent =
+                    "<html>"
+                    + "<body>"
+                    + "<h2>NovaWavex Password Reset</h2>"
+                    + "<p>Hello,</p>"
+                    + "<p>We received a request to reset "
+                    + "your NovaWavex account password.</p>"
+                    + "<p>Click the button below to create "
+                    + "a new password:</p>"
+                    + "<p>"
+                    + "<a href=\"" + resetLink + "\" "
+                    + "style=\"display:inline-block;"
+                    + "padding:12px 20px;"
+                    + "background:#000;"
+                    + "color:#fff;"
+                    + "text-decoration:none;"
+                    + "border-radius:6px;\">"
+                    + "Reset Password"
+                    + "</a>"
+                    + "</p>"
+                    + "<p>Or use this link:</p>"
+                    + "<p>" + resetLink + "</p>"
+                    + "<p>This password reset link will "
+                    + "expire in 15 minutes and can "
+                    + "only be used once.</p>"
+                    + "<p>If you did not request a password "
+                    + "reset, you can safely ignore this email.</p>"
+                    + "<p>Regards,<br>"
+                    + "NovaWavex Security Team</p>"
+                    + "</body>"
+                    + "</html>";
 
-            properties.put(
-                    "mail.smtp.host",
-                    mailHost
+            String jsonBody =
+                    "{"
+                    + "\"from\":\"" + escapeJson(FROM_EMAIL) + "\","
+                    + "\"to\":[\"" + escapeJson(recipientEmail) + "\"],"
+                    + "\"subject\":\"NovaWavex Password Reset\","
+                    + "\"html\":\"" + escapeJson(htmlContent) + "\""
+                    + "}";
+
+            HttpClient client =
+                    HttpClient.newHttpClient();
+
+            HttpRequest request =
+                    HttpRequest.newBuilder()
+                            .uri(URI.create(RESEND_API_URL))
+                            .header(
+                                    "Authorization",
+                                    "Bearer " + resendApiKey
+                            )
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            )
+                            .POST(
+                                    HttpRequest.BodyPublishers
+                                            .ofString(jsonBody)
+                            )
+                            .build();
+
+            System.out.println(
+                    ">>> EmailService: Connecting to Resend API"
             );
 
-            properties.put(
-                    "mail.smtp.port",
-                    String.valueOf(mailPort)
-            );
-
-            properties.put(
-                    "mail.smtp.auth",
-                    "true"
-            );
-
-            properties.put(
-                    "mail.smtp.starttls.enable",
-                    "true"
-            );
-
-            Session session =
-                    Session.getInstance(
-                            properties,
-                            new jakarta.mail.Authenticator() {
-
-                                @Override
-                                protected jakarta.mail.PasswordAuthentication
-                                getPasswordAuthentication() {
-
-                                    return new jakarta.mail.PasswordAuthentication(
-                                            mailUsername,
-                                            mailPassword
-                                    );
-                                }
-                            }
+            HttpResponse<String> response =
+                    client.send(
+                            request,
+                            HttpResponse.BodyHandlers.ofString()
                     );
 
-            MimeMessage message =
-                    new MimeMessage(session);
-
-            message.setFrom(
-                    new InternetAddress(
-                            mailUsername
-                    )
+            System.out.println(
+                    ">>> EmailService: Resend response status: "
+                            + response.statusCode()
             );
 
-            message.setRecipients(
-                    jakarta.mail.Message.RecipientType.TO,
-                    InternetAddress.parse(
-                            recipientEmail
-                    )
-            );
+            if (response.statusCode() < 200
+                    || response.statusCode() >= 300) {
 
-            message.setSubject(
-                    "NovaWavex Password Reset"
-            );
+                System.err.println(
+                        ">>> EmailService ERROR: Resend API returned:"
+                );
 
-            message.setText(
-                    "Hello,\n\n"
-                    + "We received a request to reset "
-                    + "your NovaWavex account password.\n\n"
-                    + "Use the link below to create a "
-                    + "new password:\n\n"
-                    + resetLink
-                    + "\n\n"
-                    + "This password reset link will "
-                    + "expire in 15 minutes and can "
-                    + "only be used once.\n\n"
-                    + "If you did not request a password "
-                    + "reset, you can safely ignore "
-                    + "this email.\n\n"
-                    + "Regards,\n"
-                    + "NovaWavex Security Team"
+                System.err.println(
+                        response.body()
+                );
+
+                throw new IllegalStateException(
+                        "Unable to send password reset email"
+                );
+            }
+
+            System.out.println(
+                    ">>> EmailService: Password reset email "
+                            + "sent successfully"
             );
 
             System.out.println(
-                    ">>> EmailService: Connecting to SMTP server "
-                            + mailHost
-                            + ":"
-                            + mailPort
+                    ">>> EmailService: Resend response: "
+                            + response.body()
             );
 
-            Transport.send(message);
-
-            System.out.println(
-                    ">>> EmailService: Password reset email sent successfully"
-            );
-
-        } catch (MessagingException exception) {
-
-            /*
-             * =========================================
-             * DIAGNOSTIC LOGGING
-             * =========================================
-             *
-             * Print the real SMTP exception so that
-             * Render logs show the actual reason for
-             * the email failure.
-             */
+        } catch (Exception exception) {
 
             System.err.println(
                     ">>> EmailService ERROR: "
@@ -164,5 +164,20 @@ public class EmailService {
                     exception
             );
         }
+    }
+
+    /*
+     * =========================================
+     * ESCAPE JSON
+     * =========================================
+     */
+
+    private String escapeJson(String value) {
+
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
     }
 }
