@@ -1,4 +1,3 @@
-
 package com.novawavex.novawavex.service;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -8,24 +7,32 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 @Service
 public class EmailService {
 
-    @Value("${RESEND_API_KEY}")
-    private String resendApiKey;
+    @Value("${GOOGLE_CLIENT_ID}")
+    private String clientId;
 
-    /*
-     * =========================================
-     * RESEND EMAIL API
-     * =========================================
-     */
+    @Value("${GOOGLE_CLIENT_SECRET}")
+    private String clientSecret;
 
-    private static final String RESEND_API_URL =
-            "https://api.resend.com/emails";
+    @Value("${GOOGLE_REFRESH_TOKEN}")
+    private String refreshToken;
 
-    private static final String FROM_EMAIL =
-            "NovaWavex <onboarding@resend.dev>";
+    @Value("${GOOGLE_SENDER_EMAIL}")
+    private String senderEmail;
+
+    private static final String GOOGLE_TOKEN_URL =
+            "https://oauth2.googleapis.com/token";
+
+    private static final String GMAIL_SEND_URL =
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+    private static final String GMAIL_SCOPE =
+            "https://www.googleapis.com/auth/gmail.send";
 
     /*
      * =========================================
@@ -44,6 +51,8 @@ public class EmailService {
 
         try {
 
+            String accessToken = getAccessToken();
+
             String htmlContent =
                     "<html>"
                     + "<body>"
@@ -54,7 +63,7 @@ public class EmailService {
                     + "<p>Click the button below to create "
                     + "a new password:</p>"
                     + "<p>"
-                    + "<a href=\"" + resetLink + "\" "
+                    + "<a href=\"" + escapeHtml(resetLink) + "\" "
                     + "style=\"display:inline-block;"
                     + "padding:12px 20px;"
                     + "background:#000;"
@@ -65,7 +74,7 @@ public class EmailService {
                     + "</a>"
                     + "</p>"
                     + "<p>Or use this link:</p>"
-                    + "<p>" + resetLink + "</p>"
+                    + "<p>" + escapeHtml(resetLink) + "</p>"
                     + "<p>This password reset link will "
                     + "expire in 15 minutes and can "
                     + "only be used once.</p>"
@@ -76,12 +85,29 @@ public class EmailService {
                     + "</body>"
                     + "</html>";
 
+            String rawEmail =
+                    "From: NovaWavex <" + senderEmail + ">\r\n"
+                    + "To: " + recipientEmail + "\r\n"
+                    + "Subject: NovaWavex Password Reset\r\n"
+                    + "MIME-Version: 1.0\r\n"
+                    + "Content-Type: text/html; charset=UTF-8\r\n"
+                    + "\r\n"
+                    + htmlContent;
+
+            String encodedMessage =
+                    Base64.getUrlEncoder()
+                            .withoutPadding()
+                            .encodeToString(
+                                    rawEmail.getBytes(
+                                            StandardCharsets.UTF_8
+                                    )
+                            );
+
             String jsonBody =
                     "{"
-                    + "\"from\":\"" + escapeJson(FROM_EMAIL) + "\","
-                    + "\"to\":[\"" + escapeJson(recipientEmail) + "\"],"
-                    + "\"subject\":\"NovaWavex Password Reset\","
-                    + "\"html\":\"" + escapeJson(htmlContent) + "\""
+                    + "\"raw\":\""
+                    + encodedMessage
+                    + "\""
                     + "}";
 
             HttpClient client =
@@ -89,10 +115,10 @@ public class EmailService {
 
             HttpRequest request =
                     HttpRequest.newBuilder()
-                            .uri(URI.create(RESEND_API_URL))
+                            .uri(URI.create(GMAIL_SEND_URL))
                             .header(
                                     "Authorization",
-                                    "Bearer " + resendApiKey
+                                    "Bearer " + accessToken
                             )
                             .header(
                                     "Content-Type",
@@ -105,7 +131,7 @@ public class EmailService {
                             .build();
 
             System.out.println(
-                    ">>> EmailService: Connecting to Resend API"
+                    ">>> EmailService: Sending email through Gmail API"
             );
 
             HttpResponse<String> response =
@@ -115,7 +141,7 @@ public class EmailService {
                     );
 
             System.out.println(
-                    ">>> EmailService: Resend response status: "
+                    ">>> EmailService: Gmail API response status: "
                             + response.statusCode()
             );
 
@@ -123,7 +149,7 @@ public class EmailService {
                     || response.statusCode() >= 300) {
 
                 System.err.println(
-                        ">>> EmailService ERROR: Resend API returned:"
+                        ">>> EmailService ERROR: Gmail API returned:"
                 );
 
                 System.err.println(
@@ -138,11 +164,6 @@ public class EmailService {
             System.out.println(
                     ">>> EmailService: Password reset email "
                             + "sent successfully"
-            );
-
-            System.out.println(
-                    ">>> EmailService: Resend response: "
-                            + response.body()
             );
 
         } catch (Exception exception) {
@@ -168,16 +189,149 @@ public class EmailService {
 
     /*
      * =========================================
-     * ESCAPE JSON
+     * GET GOOGLE ACCESS TOKEN
      * =========================================
      */
 
-    private String escapeJson(String value) {
+    private String getAccessToken()
+            throws Exception {
+
+        String requestBody =
+                "client_id="
+                + urlEncode(clientId)
+                + "&client_secret="
+                + urlEncode(clientSecret)
+                + "&refresh_token="
+                + urlEncode(refreshToken)
+                + "&grant_type=refresh_token";
+
+        HttpClient client =
+                HttpClient.newHttpClient();
+
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create(GOOGLE_TOKEN_URL))
+                        .header(
+                                "Content-Type",
+                                "application/x-www-form-urlencoded"
+                        )
+                        .POST(
+                                HttpRequest.BodyPublishers
+                                        .ofString(requestBody)
+                        )
+                        .build();
+
+        System.out.println(
+                ">>> EmailService: Refreshing Google access token"
+        );
+
+        HttpResponse<String> response =
+                client.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
+
+        if (response.statusCode() < 200
+                || response.statusCode() >= 300) {
+
+            System.err.println(
+                    ">>> EmailService ERROR: Google token API returned:"
+            );
+
+            System.err.println(
+                    response.body()
+            );
+
+            throw new IllegalStateException(
+                    "Unable to obtain Google access token"
+            );
+        }
+
+        String accessToken =
+                extractJsonValue(
+                        response.body(),
+                        "access_token"
+                );
+
+        if (accessToken == null
+                || accessToken.isBlank()) {
+
+            throw new IllegalStateException(
+                    "Google access token was not returned"
+            );
+        }
+
+        return accessToken;
+    }
+
+    /*
+     * =========================================
+     * SIMPLE JSON VALUE EXTRACTION
+     * =========================================
+     */
+
+    private String extractJsonValue(
+            String json,
+            String key) {
+
+        String search =
+                "\"" + key + "\":\"";
+
+        int start =
+                json.indexOf(search);
+
+        if (start == -1) {
+            return null;
+        }
+
+        start += search.length();
+
+        int end =
+                json.indexOf(
+                        "\"",
+                        start
+                );
+
+        if (end == -1) {
+            return null;
+        }
+
+        return json.substring(
+                start,
+                end
+        );
+    }
+
+    /*
+     * =========================================
+     * URL ENCODE
+     * =========================================
+     */
+
+    private String urlEncode(
+            String value) {
+
+        return java.net.URLEncoder
+                .encode(
+                        value,
+                        StandardCharsets.UTF_8
+                );
+    }
+
+    /*
+     * =========================================
+     * HTML ESCAPE
+     * =========================================
+     */
+
+    private String escapeHtml(
+            String value) {
 
         return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n");
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }
