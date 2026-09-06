@@ -9,6 +9,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class EmailService {
@@ -30,9 +32,6 @@ public class EmailService {
 
     private static final String GMAIL_SEND_URL =
             "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
-
-    private static final String GMAIL_SCOPE =
-            "https://www.googleapis.com/auth/gmail.send";
 
     /*
      * =========================================
@@ -231,6 +230,11 @@ public class EmailService {
                         HttpResponse.BodyHandlers.ofString()
                 );
 
+        System.out.println(
+                ">>> EmailService: Google token API response status: "
+                        + response.statusCode()
+        );
+
         if (response.statusCode() < 200
                 || response.statusCode() >= 300) {
 
@@ -248,58 +252,52 @@ public class EmailService {
         }
 
         String accessToken =
-                extractJsonValue(
-                        response.body(),
-                        "access_token"
+                extractAccessToken(
+                        response.body()
                 );
 
         if (accessToken == null
                 || accessToken.isBlank()) {
+
+            System.err.println(
+                    ">>> EmailService ERROR: Google returned a successful "
+                            + "response but no access token was found."
+            );
 
             throw new IllegalStateException(
                     "Google access token was not returned"
             );
         }
 
+        System.out.println(
+                ">>> EmailService: Google access token obtained successfully"
+        );
+
         return accessToken;
     }
 
     /*
      * =========================================
-     * SIMPLE JSON VALUE EXTRACTION
+     * EXTRACT ACCESS TOKEN
      * =========================================
      */
 
-    private String extractJsonValue(
-            String json,
-            String key) {
+    private String extractAccessToken(
+            String json) {
 
-        String search =
-                "\"" + key + "\":\"";
-
-        int start =
-                json.indexOf(search);
-
-        if (start == -1) {
-            return null;
-        }
-
-        start += search.length();
-
-        int end =
-                json.indexOf(
-                        "\"",
-                        start
+        Pattern pattern =
+                Pattern.compile(
+                        "\"access_token\"\\s*:\\s*\"([^\"]+)\""
                 );
 
-        if (end == -1) {
-            return null;
+        Matcher matcher =
+                pattern.matcher(json);
+
+        if (matcher.find()) {
+            return matcher.group(1);
         }
 
-        return json.substring(
-                start,
-                end
-        );
+        return null;
     }
 
     /*
