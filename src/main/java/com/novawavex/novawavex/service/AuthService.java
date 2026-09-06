@@ -1,4 +1,3 @@
-
 package com.novawavex.novawavex.service;
 
 import com.novawavex.novawavex.dto.AuthRequest;
@@ -16,6 +15,7 @@ import com.novawavex.novawavex.exception.UnauthorizedException;
 import com.novawavex.novawavex.repository.PasswordResetTokenRepository;
 import com.novawavex.novawavex.repository.UserRepository;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +38,9 @@ public class AuthService {
 
     private final SecureRandom secureRandom =
             new SecureRandom();
+
+    @Value("${app.cors.allowed-origin}")
+    private String frontendUrl;
 
     public AuthService(
             UserRepository userRepository,
@@ -68,12 +71,6 @@ public class AuthService {
     public RegisterResponse register(
             RegisterRequest request) {
 
-        /*
-         * =====================================
-         * NORMALIZE INPUT
-         * =====================================
-         */
-
         String fullName =
                 request.getFullName()
                         .trim();
@@ -82,12 +79,6 @@ public class AuthService {
                 request.getEmail()
                         .trim()
                         .toLowerCase();
-
-        /*
-         * =====================================
-         * PASSWORD CONFIRMATION
-         * =====================================
-         */
 
         if (!request.getPassword()
                 .equals(
@@ -99,12 +90,6 @@ public class AuthService {
             );
         }
 
-        /*
-         * =====================================
-         * DUPLICATE EMAIL CHECK
-         * =====================================
-         */
-
         if (userRepository
                 .findByEmail(email)
                 .isPresent()) {
@@ -114,22 +99,10 @@ public class AuthService {
             );
         }
 
-        /*
-         * =====================================
-         * ENCODE PASSWORD
-         * =====================================
-         */
-
         String encodedPassword =
                 passwordEncoder.encode(
                         request.getPassword()
                 );
-
-        /*
-         * =====================================
-         * CREATE USER
-         * =====================================
-         */
 
         User user = new User(
                 fullName,
@@ -137,12 +110,6 @@ public class AuthService {
                 encodedPassword,
                 "USER"
         );
-
-        /*
-         * =====================================
-         * PROFILE IMAGE
-         * =====================================
-         */
 
         if (request.getProfileImage() != null
                 && !request.getProfileImage()
@@ -153,20 +120,8 @@ public class AuthService {
             );
         }
 
-        /*
-         * =====================================
-         * SAVE USER
-         * =====================================
-         */
-
         User savedUser =
                 userRepository.save(user);
-
-        /*
-         * =====================================
-         * RETURN REGISTRATION RESPONSE
-         * =====================================
-         */
 
         return new RegisterResponse(
                 savedUser.getId(),
@@ -365,20 +320,19 @@ public class AuthService {
          * CREATE FRONTEND RESET LINK
          * =====================================
          *
-         * The user will receive this link
-         * in their email.
+         * Uses the configured frontend URL.
          *
-         * Example:
+         * Production:
+         * https://novawavex-frontend.onrender.com
          *
-         * http://localhost:5173/reset-password?token=XXXXX
-         *
-         * The React ResetPassword page will
-         * read the token from the URL.
+         * Development:
+         * configured by app.cors.allowed-origin
          * =====================================
          */
 
         String resetLink =
-                "http://localhost:5173/reset-password?token="
+                frontendUrl
+                + "/reset-password?token="
                 + resetToken;
 
         /*
@@ -391,12 +345,6 @@ public class AuthService {
                 user.getEmail(),
                 resetLink
         );
-
-        /*
-         * =====================================
-         * RETURN GENERIC RESPONSE
-         * =====================================
-         */
 
         return new ForgotPasswordResponse(
                 genericMessage
@@ -430,6 +378,7 @@ public class AuthService {
 
         PasswordResetToken
                 passwordResetToken =
+
                 passwordResetTokenRepository
                         .findByToken(resetToken)
                         .orElse(null);
@@ -510,4 +459,3 @@ public class AuthService {
         );
     }
 }
-
