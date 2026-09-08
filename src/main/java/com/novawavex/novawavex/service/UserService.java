@@ -1,6 +1,9 @@
+
 package com.novawavex.novawavex.service;
 
+import com.novawavex.novawavex.dto.AccountStatusUpdateRequest;
 import com.novawavex.novawavex.dto.ProfileNameRequest;
+import com.novawavex.novawavex.dto.RoleUpdateRequest;
 import com.novawavex.novawavex.dto.UserRequest;
 import com.novawavex.novawavex.dto.UserResponse;
 import com.novawavex.novawavex.entity.User;
@@ -26,16 +29,12 @@ public class UserService {
             PasswordEncoder passwordEncoder) {
 
         this.userRepository = userRepository;
-
         this.passwordEncoder = passwordEncoder;
-
     }
 
-    /*
-     * =========================================
-     * CREATE USER
-     * =========================================
-     */
+    // =========================================
+    // CREATE USER
+    // =========================================
 
     public UserResponse createUser(UserRequest request) {
 
@@ -46,7 +45,6 @@ public class UserService {
             throw new DuplicateResourceException(
                     "Email already registered"
             );
-
         }
 
         String encodedPassword =
@@ -64,73 +62,45 @@ public class UserService {
         User savedUser =
                 userRepository.save(user);
 
-        return new UserResponse(
-                savedUser.getId(),
-                savedUser.getFullName(),
-                savedUser.getEmail(),
-                savedUser.getRole(),
-                savedUser.getProfileImage()
-        );
+        return toUserResponse(savedUser);
     }
 
-    /*
-     * =========================================
-     * GET ALL USERS
-     * =========================================
-     */
+    // =========================================
+    // GET ALL USERS
+    // =========================================
 
     public List<UserResponse> getAllUsers() {
 
         return userRepository
                 .findAll()
                 .stream()
-                .map(user -> new UserResponse(
-                        user.getId(),
-                        user.getFullName(),
-                        user.getEmail(),
-                        user.getRole(),
-                        user.getProfileImage()
-                ))
+                .map(this::toUserResponse)
                 .toList();
-
     }
 
-    /*
-     * =========================================
-     * GET USER BY ID
-     * =========================================
-     */
+    // =========================================
+    // GET USER BY ID
+    // =========================================
 
     public UserResponse getUserById(Long id) {
 
         User user =
                 userRepository
                         .findById(id)
-                        .orElse(null);
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
 
-        if (user == null) {
-
-            return null;
-
-        }
-
-        return new UserResponse(
-                user.getId(),
-                user.getFullName(),
-                user.getEmail(),
-                user.getRole(),
-                user.getProfileImage()
-        );
+        return toUserResponse(user);
     }
 
-    /*
-     * =========================================
-     * GET CURRENT AUTHENTICATED USER
-     * =========================================
-     */
+    // =========================================
+    // GET CURRENT AUTHENTICATED USER
+    // =========================================
 
-    public UserResponse getCurrentUser(
-            String email) {
+    public UserResponse getCurrentUser(String email) {
 
         User user =
                 userRepository
@@ -141,37 +111,18 @@ public class UserService {
                                 )
                         );
 
-        return new UserResponse(
-                user.getId(),
-                user.getFullName(),
-                user.getEmail(),
-                user.getRole(),
-                user.getProfileImage()
-        );
+        return toUserResponse(user);
     }
 
-    /*
-     * =========================================
-     * UPDATE CURRENT USER NAME
-     * =========================================
-     *
-     * The email comes from the authenticated
-     * JWT SecurityContext.
-     *
-     * The frontend does NOT provide the email.
-     */
+    // =========================================
+    // UPDATE CURRENT USER NAME
+    // =========================================
 
     @Transactional
     public UserResponse updateCurrentUserName(
             String email,
             ProfileNameRequest request) {
 
-        /*
-         * =====================================
-         * FIND AUTHENTICATED USER
-         * =====================================
-         */
-
         User user =
                 userRepository
                         .findByEmail(email)
@@ -181,59 +132,111 @@ public class UserService {
                                 )
                         );
 
-        /*
-         * =====================================
-         * CLEAN NAME
-         * =====================================
-         */
-
         String fullName =
-                request.getFullName()
-                        .trim();
-
-        /*
-         * =====================================
-         * VALIDATE NAME
-         * =====================================
-         */
+                request.getFullName().trim();
 
         if (fullName.isBlank()) {
 
             throw new IllegalArgumentException(
                     "Full name cannot be empty"
             );
-
         }
 
-        /*
-         * =====================================
-         * UPDATE NAME
-         * =====================================
-         */
-
         user.setFullName(fullName);
-
-        /*
-         * =====================================
-         * SAVE USER
-         * =====================================
-         */
 
         User updatedUser =
                 userRepository.save(user);
 
+        return toUserResponse(updatedUser);
+    }
+
+    // =========================================
+    // UPDATE USER ROLE
+    // =========================================
+
+    @Transactional
+    public UserResponse updateUserRole(
+            Long id,
+            RoleUpdateRequest request) {
+
+        User user =
+                userRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
+
+        String role =
+                request.getRole()
+                        .trim()
+                        .toUpperCase();
+
         /*
-         * =====================================
-         * RETURN UPDATED PROFILE
-         * =====================================
+         * NovaWavex currently supports:
+         *
+         * USER
+         * ADMIN
          */
 
+        if (!role.equals("USER")
+                && !role.equals("ADMIN")) {
+
+            throw new IllegalArgumentException(
+                    "Role must be USER or ADMIN"
+            );
+        }
+
+        user.setRole(role);
+
+        User updatedUser =
+                userRepository.save(user);
+
+        return toUserResponse(updatedUser);
+    }
+
+    // =========================================
+    // UPDATE ACCOUNT STATUS
+    // =========================================
+
+    @Transactional
+    public UserResponse updateAccountStatus(
+            Long id,
+            AccountStatusUpdateRequest request) {
+
+        User user =
+                userRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
+
+        user.setEnabled(
+                request.isEnabled()
+        );
+
+        User updatedUser =
+                userRepository.save(user);
+
+        return toUserResponse(updatedUser);
+    }
+
+    // =========================================
+    // USER RESPONSE MAPPER
+    // =========================================
+
+    private UserResponse toUserResponse(User user) {
+
         return new UserResponse(
-                updatedUser.getId(),
-                updatedUser.getFullName(),
-                updatedUser.getEmail(),
-                updatedUser.getRole(),
-                updatedUser.getProfileImage()
+                user.getId(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getRole(),
+                user.getProfileImage(),
+                user.isEnabled()
         );
     }
 }

@@ -161,6 +161,25 @@ public class AuthService {
             );
         }
 
+        /*
+         * =====================================
+         * ACCOUNT STATUS
+         * =====================================
+         *
+         * Disabled users are not allowed
+         * to login.
+         *
+         * enabled = true  -> login allowed
+         * enabled = false -> login rejected
+         */
+
+        if (!user.isEnabled()) {
+
+            throw new UnauthorizedException(
+                    "This account has been disabled"
+            );
+        }
+
         return user;
     }
 
