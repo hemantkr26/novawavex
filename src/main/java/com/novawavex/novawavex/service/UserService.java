@@ -1,17 +1,23 @@
 package com.novawavex.novawavex.service;
 
 import com.novawavex.novawavex.dto.AccountStatusUpdateRequest;
+import com.novawavex.novawavex.dto.ProfileImageRequest;
 import com.novawavex.novawavex.dto.ProfileNameRequest;
 import com.novawavex.novawavex.dto.RoleUpdateRequest;
 import com.novawavex.novawavex.dto.UserRequest;
 import com.novawavex.novawavex.dto.UserResponse;
+
 import com.novawavex.novawavex.entity.User;
+
 import com.novawavex.novawavex.exception.DuplicateResourceException;
 import com.novawavex.novawavex.exception.ResourceNotFoundException;
+
 import com.novawavex.novawavex.repository.PasswordResetTokenRepository;
 import com.novawavex.novawavex.repository.UserRepository;
+
 import com.novawavex.novawavex.workflow.Workflow;
 import com.novawavex.novawavex.workflow.WorkflowRepository;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -157,8 +163,62 @@ public class UserService {
     }
 
     // =========================================
+    // UPDATE CURRENT USER PROFILE IMAGE
+    // =========================================
+    //
+    // Authenticated users can update their
+    // own profile image.
+    //
+    // The frontend sends:
+    //
+    // {
+    //     "profileImage": "data:image/..."
+    // }
+    //
+    // =========================================
+
+    @Transactional
+    public UserResponse updateCurrentUserProfileImage(
+            String email,
+            ProfileImageRequest request) {
+
+        User user =
+                userRepository.findByEmail(email)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
+
+        String profileImage =
+                request.getProfileImage();
+
+        if (profileImage == null ||
+                profileImage.trim().isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Profile image cannot be empty"
+            );
+        }
+
+        user.setProfileImage(
+                profileImage.trim()
+        );
+
+        User updatedUser =
+                userRepository.save(user);
+
+        return toUserResponse(updatedUser);
+    }
+
+    // =========================================
     // UPDATE USER ROLE
     // =========================================
+    //
+    // ADMIN ONLY
+    //
+    // USER <-> ADMIN
+    //
 
     @Transactional
     public UserResponse updateUserRole(
@@ -197,6 +257,9 @@ public class UserService {
     // =========================================
     // UPDATE ACCOUNT STATUS
     // =========================================
+    //
+    // ADMIN ONLY
+    //
 
     @Transactional
     public UserResponse updateAccountStatus(
@@ -240,6 +303,7 @@ public class UserService {
          * Do not allow the application to lose
          * its final ADMIN account.
          */
+
         if ("ADMIN".equalsIgnoreCase(user.getRole())) {
 
             long adminCount =
@@ -282,6 +346,7 @@ public class UserService {
          * This prevents accidental self-deletion
          * from the admin user-management endpoint.
          */
+
         if (user.getEmail().equalsIgnoreCase(requesterEmail)) {
 
             throw new IllegalArgumentException(
@@ -293,6 +358,7 @@ public class UserService {
          * Never allow the final ADMIN account
          * to be deleted.
          */
+
         if ("ADMIN".equalsIgnoreCase(user.getRole())) {
 
             long adminCount =
@@ -348,11 +414,13 @@ public class UserService {
          * Delete all tokens first so PostgreSQL
          * allows the user deletion.
          */
+
         passwordResetTokenRepository.deleteByUser(user);
 
         /*
          * Finally delete the user.
          */
+
         userRepository.delete(user);
     }
 

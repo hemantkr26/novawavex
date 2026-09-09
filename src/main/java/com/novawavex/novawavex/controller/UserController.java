@@ -1,6 +1,7 @@
 package com.novawavex.novawavex.controller;
 
 import com.novawavex.novawavex.dto.AccountStatusUpdateRequest;
+import com.novawavex.novawavex.dto.ProfileImageRequest;
 import com.novawavex.novawavex.dto.ProfileNameRequest;
 import com.novawavex.novawavex.dto.RoleUpdateRequest;
 import com.novawavex.novawavex.dto.UserRequest;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 
 import org.springframework.security.core.Authentication;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -84,6 +86,21 @@ public class UserController {
 
         return userService.updateCurrentUserName(
                 email,
+                request
+        );
+    }
+
+    // =========================================
+    // UPDATE CURRENT USER PROFILE IMAGE
+    // =========================================
+
+    @PutMapping("/me/profile-image")
+    public UserResponse updateCurrentUserProfileImage(
+            @Valid @RequestBody ProfileImageRequest request,
+            Authentication authentication) {
+
+        return userService.updateCurrentUserProfileImage(
+                authentication.getName(),
                 request
         );
     }
