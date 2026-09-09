@@ -1,4 +1,3 @@
-
 package com.novawavex.novawavex.service;
 
 import com.novawavex.novawavex.dto.AccountStatusUpdateRequest;
@@ -9,8 +8,10 @@ import com.novawavex.novawavex.dto.UserResponse;
 import com.novawavex.novawavex.entity.User;
 import com.novawavex.novawavex.exception.DuplicateResourceException;
 import com.novawavex.novawavex.exception.ResourceNotFoundException;
+import com.novawavex.novawavex.repository.PasswordResetTokenRepository;
 import com.novawavex.novawavex.repository.UserRepository;
-
+import com.novawavex.novawavex.workflow.Workflow;
+import com.novawavex.novawavex.workflow.WorkflowRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +23,25 @@ public class UserService {
 
     private final UserRepository userRepository;
 
+    private final WorkflowRepository workflowRepository;
+
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+
     private final PasswordEncoder passwordEncoder;
 
     public UserService(
             UserRepository userRepository,
+            WorkflowRepository workflowRepository,
+            PasswordResetTokenRepository passwordResetTokenRepository,
             PasswordEncoder passwordEncoder) {
 
         this.userRepository = userRepository;
+
+        this.workflowRepository = workflowRepository;
+
+        this.passwordResetTokenRepository =
+                passwordResetTokenRepository;
+
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -38,9 +51,7 @@ public class UserService {
 
     public UserResponse createUser(UserRequest request) {
 
-        if (userRepository
-                .findByEmail(request.getEmail())
-                .isPresent()) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
 
             throw new DuplicateResourceException(
                     "Email already registered"
@@ -48,9 +59,7 @@ public class UserService {
         }
 
         String encodedPassword =
-                passwordEncoder.encode(
-                        request.getPassword()
-                );
+                passwordEncoder.encode(request.getPassword());
 
         User user = new User(
                 request.getFullName(),
@@ -85,10 +94,9 @@ public class UserService {
     public UserResponse getUserById(Long id) {
 
         User user =
-                userRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
+                userRepository.findById(id)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
                                         "User not found"
                                 )
                         );
@@ -103,10 +111,9 @@ public class UserService {
     public UserResponse getCurrentUser(String email) {
 
         User user =
-                userRepository
-                        .findByEmail(email)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
+                userRepository.findByEmail(email)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
                                         "User not found"
                                 )
                         );
@@ -124,10 +131,9 @@ public class UserService {
             ProfileNameRequest request) {
 
         User user =
-                userRepository
-                        .findByEmail(email)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
+                userRepository.findByEmail(email)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
                                         "User not found"
                                 )
                         );
@@ -160,10 +166,9 @@ public class UserService {
             RoleUpdateRequest request) {
 
         User user =
-                userRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
+                userRepository.findById(id)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
                                         "User not found"
                                 )
                         );
@@ -173,15 +178,8 @@ public class UserService {
                         .trim()
                         .toUpperCase();
 
-        /*
-         * NovaWavex currently supports:
-         *
-         * USER
-         * ADMIN
-         */
-
-        if (!role.equals("USER")
-                && !role.equals("ADMIN")) {
+        if (!role.equals("USER") &&
+            !role.equals("ADMIN")) {
 
             throw new IllegalArgumentException(
                     "Role must be USER or ADMIN"
@@ -206,10 +204,9 @@ public class UserService {
             AccountStatusUpdateRequest request) {
 
         User user =
-                userRepository
-                        .findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
+                userRepository.findById(id)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
                                         "User not found"
                                 )
                         );
@@ -225,10 +222,146 @@ public class UserService {
     }
 
     // =========================================
+    // DELETE CURRENT AUTHENTICATED USER
+    // =========================================
+
+    @Transactional
+    public void deleteCurrentUser(String email) {
+
+        User user =
+                userRepository.findByEmail(email)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
+
+        /*
+         * Do not allow the application to lose
+         * its final ADMIN account.
+         */
+        if ("ADMIN".equalsIgnoreCase(user.getRole())) {
+
+            long adminCount =
+                    userRepository.countByRole("ADMIN");
+
+            if (adminCount <= 1) {
+
+                throw new IllegalArgumentException(
+                        "The last ADMIN account cannot be deleted"
+                );
+            }
+        }
+
+        deleteUserAndOwnedWorkflows(user);
+    }
+
+    // =========================================
+    // DELETE USER BY ID
+    // ADMIN ONLY
+    // =========================================
+
+    @Transactional
+    public void deleteUser(
+            Long id,
+            String requesterEmail) {
+
+        User user =
+                userRepository.findById(id)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException(
+                                        "User not found"
+                                )
+                        );
+
+        /*
+         * An ADMIN must use the normal
+         * Profile → Delete Account flow
+         * to delete their own account.
+         *
+         * This prevents accidental self-deletion
+         * from the admin user-management endpoint.
+         */
+        if (user.getEmail().equalsIgnoreCase(requesterEmail)) {
+
+            throw new IllegalArgumentException(
+                    "Use your Profile page to delete your own account"
+            );
+        }
+
+        /*
+         * Never allow the final ADMIN account
+         * to be deleted.
+         */
+        if ("ADMIN".equalsIgnoreCase(user.getRole())) {
+
+            long adminCount =
+                    userRepository.countByRole("ADMIN");
+
+            if (adminCount <= 1) {
+
+                throw new IllegalArgumentException(
+                        "The last ADMIN account cannot be deleted"
+                );
+            }
+        }
+
+        deleteUserAndOwnedWorkflows(user);
+    }
+
+    // =========================================
+    // DELETE USER + OWNED WORKFLOWS
+    // =========================================
+    //
+    // Workflows store ownership using:
+    //
+    // createdBy = user email
+    //
+    // Therefore workflows are removed first.
+    //
+    // Password reset tokens also reference
+    // the user through user_id.
+    //
+    // Therefore password reset tokens are
+    // removed before deleting the user.
+    //
+
+    private void deleteUserAndOwnedWorkflows(
+            User user) {
+
+        List<Workflow> workflows =
+                workflowRepository.findByCreatedBy(
+                        user.getEmail()
+                );
+
+        if (!workflows.isEmpty()) {
+
+            workflowRepository.deleteAll(
+                    workflows
+            );
+        }
+
+        /*
+         * Password reset tokens contain a foreign-key
+         * reference to users.id.
+         *
+         * Delete all tokens first so PostgreSQL
+         * allows the user deletion.
+         */
+        passwordResetTokenRepository.deleteByUser(user);
+
+        /*
+         * Finally delete the user.
+         */
+        userRepository.delete(user);
+    }
+
+    // =========================================
     // USER RESPONSE MAPPER
     // =========================================
 
-    private UserResponse toUserResponse(User user) {
+    private UserResponse toUserResponse(
+            User user) {
 
         return new UserResponse(
                 user.getId(),

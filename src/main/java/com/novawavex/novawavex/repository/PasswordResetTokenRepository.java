@@ -16,4 +16,8 @@ public interface PasswordResetTokenRepository
     void deleteByUserAndUsedFalse(
             User user
     );
+
+    void deleteByUser(
+            User user
+    );
 }

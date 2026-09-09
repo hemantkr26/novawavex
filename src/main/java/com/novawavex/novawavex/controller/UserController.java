@@ -1,4 +1,3 @@
-
 package com.novawavex.novawavex.controller;
 
 import com.novawavex.novawavex.dto.AccountStatusUpdateRequest;
@@ -13,6 +12,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,7 +30,9 @@ public class UserController {
 
     private final UserService userService;
 
-    public UserController(UserService userService) {
+    public UserController(
+            UserService userService) {
+
         this.userService = userService;
     }
 
@@ -77,11 +79,29 @@ public class UserController {
             @Valid @RequestBody ProfileNameRequest request,
             Authentication authentication) {
 
-        String email = authentication.getName();
+        String email =
+                authentication.getName();
 
         return userService.updateCurrentUserName(
                 email,
                 request
+        );
+    }
+
+    // =========================================
+    // DELETE CURRENT AUTHENTICATED USER
+    // =========================================
+    //
+    // Any authenticated user can delete
+    // their own account.
+    //
+
+    @DeleteMapping("/me")
+    public void deleteCurrentUser(
+            Authentication authentication) {
+
+        userService.deleteCurrentUser(
+                authentication.getName()
         );
     }
 
@@ -103,7 +123,7 @@ public class UserController {
     // ADMIN ONLY
     //
     // USER <-> ADMIN
-    // =========================================
+    //
 
     @PutMapping("/{id}/role")
     public UserResponse updateUserRole(
@@ -121,7 +141,7 @@ public class UserController {
     // =========================================
     //
     // ADMIN ONLY
-    // =========================================
+    //
 
     @PutMapping("/{id}/status")
     public UserResponse updateAccountStatus(
@@ -131,6 +151,30 @@ public class UserController {
         return userService.updateAccountStatus(
                 id,
                 request
+        );
+    }
+
+    // =========================================
+    // DELETE USER
+    // =========================================
+    //
+    // ADMIN ONLY
+    //
+    // An ADMIN cannot use this endpoint to
+    // delete their own account.
+    //
+    // Their own account must be deleted
+    // through DELETE /api/users/me.
+    //
+
+    @DeleteMapping("/{id}")
+    public void deleteUser(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        userService.deleteUser(
+                id,
+                authentication.getName()
         );
     }
 }

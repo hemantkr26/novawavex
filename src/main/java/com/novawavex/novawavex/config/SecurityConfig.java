@@ -1,16 +1,16 @@
-
 package com.novawavex.novawavex.config;
 
 import com.novawavex.novawavex.security.JwtAuthenticationFilter;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
-import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 public class SecurityConfig {
@@ -53,9 +53,6 @@ public class SecurityConfig {
                          * =========================================
                          * PUBLIC AUTHENTICATION ENDPOINTS
                          * =========================================
-                         *
-                         * These endpoints do not require
-                         * an existing JWT.
                          */
 
                         .requestMatchers(
@@ -91,11 +88,6 @@ public class SecurityConfig {
                          * =========================================
                          * AUTHENTICATED USER PROFILE ENDPOINTS
                          * =========================================
-                         *
-                         * These endpoints belong to the currently
-                         * authenticated user.
-                         *
-                         * USER and ADMIN can both access them.
                          */
 
                         .requestMatchers(
@@ -106,11 +98,25 @@ public class SecurityConfig {
 
                         /*
                          * =========================================
-                         * ADMIN-ONLY USER MANAGEMENT
+                         * SELF ACCOUNT DELETION
                          * =========================================
                          *
-                         * All other /api/users/** endpoints
-                         * require ADMIN.
+                         * USER and ADMIN can delete only
+                         * their own account through /me.
+                         *
+                         * This matcher is intentionally before
+                         * the ADMIN-only /api/users/** matcher.
+                         */
+
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/users/me"
+                        ).authenticated()
+
+                        /*
+                         * =========================================
+                         * ADMIN-ONLY USER MANAGEMENT
+                         * =========================================
                          */
 
                         .requestMatchers(
@@ -121,15 +127,6 @@ public class SecurityConfig {
                          * =========================================
                          * EVERYTHING ELSE
                          * =========================================
-                         *
-                         * Includes:
-                         *
-                         * /api/auth/change-password
-                         * /api/workflows/**
-                         * /api/executions/**
-                         * /api/notifications/**
-                         *
-                         * All require authentication.
                          */
 
                         .anyRequest()
@@ -145,9 +142,7 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception
 
                         /*
-                         * =========================================
-                         * 401 UNAUTHORIZED
-                         * =========================================
+                         * 401
                          */
 
                         .authenticationEntryPoint(
@@ -174,9 +169,7 @@ public class SecurityConfig {
                         )
 
                         /*
-                         * =========================================
-                         * 403 FORBIDDEN
-                         * =========================================
+                         * 403
                          */
 
                         .accessDeniedHandler(
@@ -210,7 +203,6 @@ public class SecurityConfig {
                  */
 
                 .sessionManagement(session -> session
-
                         .sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
                         )
